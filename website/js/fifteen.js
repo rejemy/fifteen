@@ -9,6 +9,7 @@ var fifteen;
             this.GapX = 0;
             this.GapY = 0;
             this.StartedAt = 0;
+            this.Moves = 0;
             this.TileArea = fifteen.util.assertNotNull(document.getElementById("tilearea"));
             this.cleanup();
         }
@@ -18,15 +19,16 @@ var fifteen;
             let startButton = fifteen.util.assertNotNull(title.querySelector("button"));
             startButton.onclick = () => {
                 fifteen.Sounds.CLICK.play();
-                this.startGame();
+                this.setupGame();
             };
         }
-        startGame() {
+        setupGame() {
             fifteen.ui.removeChildren(this.TileArea);
-            let num = 0;
+            let num = 1;
+            let max = BoardSize * BoardSize;
             for (let y = 0; y < BoardSize; y++) {
                 for (let x = 0; x < BoardSize; x++) {
-                    if (num > 0) {
+                    if (num < max) {
                         let newTile = new fifteen.Tile(this, num);
                         this.Tiles[x][y] = newTile;
                         newTile.setPos(x, y);
@@ -35,22 +37,15 @@ var fifteen;
                     num++;
                 }
             }
-            this.GapX = 0;
-            this.GapY = 0;
+            this.GapX = BoardSize - 1;
+            this.GapY = BoardSize - 1;
             this.scramble();
-            this.StartedAt = Date.now();
+            this.onGameStart();
         }
         scramble() {
-            // Remove elements so we're not transitioning while scrambling
-            for (let y = 0; y < BoardSize; y++) {
-                for (let x = 0; x < BoardSize; x++) {
-                    let tile = this.Tiles[x][y];
-                    if (!tile)
-                        continue;
-                    if (tile.Element.parentElement)
-                        tile.Element.remove();
-                }
-            }
+            // Remove tles from DOM so we're not transitioning while scrambling
+            let parent = fifteen.util.assertNotNull(this.TileArea.parentElement);
+            this.TileArea.remove();
             // Scrambling algorithm works by starting with a solvable board position,
             // then just randomly making moves. Each time, we build a list of possible
             // tiles we could pick, then we randomly pick one
@@ -80,29 +75,25 @@ var fifteen;
                 }
                 this.slideTileAt(choiceX, choiceY, true);
             }
-            // Now put all the elements back at their new positions
+            // Add back to the DOM
+            parent.appendChild(this.TileArea);
+            // We can't set the opacity in the same frame as we append to the DOM,
+            // the transition won't be triggered, so wait a frame to start the game
+            setTimeout(() => {
+                this.onGameStart();
+            }, 1);
+        }
+        onGameStart() {
             for (let y = 0; y < BoardSize; y++) {
                 for (let x = 0; x < BoardSize; x++) {
                     let tile = this.Tiles[x][y];
                     if (!tile)
                         continue;
-                    tile.setPos(x, y);
-                    this.TileArea.appendChild(tile.Element);
+                    tile.Element.style.opacity = "1";
                 }
             }
-            // We can't set the opacity in the same frame as we append to the DOM,
-            // the transition won't be triggered
-            setTimeout(() => {
-                for (let y = 0; y < BoardSize; y++) {
-                    for (let x = 0; x < BoardSize; x++) {
-                        let tile = this.Tiles[x][y];
-                        if (!tile)
-                            continue;
-                        tile.Element.style.opacity = "1";
-                    }
-                }
-            }, 1);
             this.findValidMoves();
+            this.StartedAt = Date.now();
         }
         findValidMoves() {
             for (let y = 0; y < BoardSize; y++) {
@@ -148,6 +139,7 @@ var fifteen;
             }
             if (!skipChecks) {
                 this.postMoveChecks();
+                this.Moves++;
             }
         }
         moveTileToGap(tile) {
@@ -167,10 +159,8 @@ var fifteen;
             }
         }
         isInOrder() {
-            // Only in order if the gap is at the first or last spot, just because
-            // I don't feel good about the gap being in the middle somewhere
-            if ((this.GapX != 0 || this.GapY != 0) &&
-                (this.GapX != BoardSize - 1 || this.GapY != BoardSize - 1))
+            // Only in order if the gap is at the last spot, so don't check otherwise
+            if (this.GapX != BoardSize - 1 || this.GapY != BoardSize - 1)
                 return false;
             let nextNum = 1;
             for (let y = 0; y < BoardSize; y++) {
@@ -214,14 +204,16 @@ var fifteen;
             let time = Date.now() - this.StartedAt;
             let seconds = Math.floor(time / 1000);
             let gameover = fifteen.util.assertNotNull(fifteen.ui.template("gameover_template"));
-            let secondSpan = fifteen.util.assertNotNull(gameover.querySelector("span"));
-            secondSpan.textContent = seconds.toString();
+            let movesSpan = fifteen.util.assertNotNull(gameover.querySelector(".moves"));
+            movesSpan.textContent = this.Moves == 1 ? "1 move" : (this.Moves + " moves");
+            let secondSpan = fifteen.util.assertNotNull(gameover.querySelector(".seconds"));
+            secondSpan.textContent = seconds == 1 ? "1 second" : (seconds + " seconds");
             this.TileArea.appendChild(gameover);
             let startButton = fifteen.util.assertNotNull(gameover.querySelector("button"));
             startButton.onclick = () => {
                 fifteen.Sounds.CLICK.play();
                 this.cleanup();
-                this.startGame();
+                this.setupGame();
             };
         }
         cleanup() {
